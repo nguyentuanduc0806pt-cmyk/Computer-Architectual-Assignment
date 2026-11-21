@@ -40,13 +40,13 @@
 
 **Phụ trách triển khai:**
 
-- [ ] `validate_capture` – Kiểm tra một nước ăn quân có hợp lệ hay không.
-- [ ] Xác định quân bị ăn và triển khai `apply_capture` – Di chuyển quân đang ăn và loại bỏ quân nằm ở giữa.
-- [ ] `check_capture` – Kiểm tra từ một ô nhất định xem còn nước ăn quân nào hay không.
-- [ ] `chain_capture` – Yêu cầu người chơi nhập và thực hiện các nước ăn liên tiếp bằng cùng một quân.
+- [x] `validate_capture` – Kiểm tra một nước ăn quân có hợp lệ hay không.
+- [x] Xác định quân bị ăn và triển khai `apply_capture` – Di chuyển quân đang ăn và loại bỏ quân nằm ở giữa.
+- [x] `check_capture` – Kiểm tra từ một ô nhất định xem còn nước ăn quân nào hay không.
+- [x] `chain_capture` – Yêu cầu người chơi nhập và thực hiện các nước ăn liên tiếp bằng cùng một quân.
 - [ ] Nhập dữ liệu từ người chơi và quản lý lượt chơi.
 - [ ] Chuyển lượt và cho phép nhập lại khi nước đi không hợp lệ.
-- [ ] `check_winner` – Tối thiểu phải phát hiện trường hợp một bên không còn quân cờ.
+- [x] `check_winner` – Tối thiểu phải phát hiện trường hợp một bên không còn quân cờ.
 - [ ] Kết thúc trò chơi và hiển thị kết quả cuối cùng.
 - [ ] `main` và vòng lặp điều khiển toàn bộ trò chơi.
 
