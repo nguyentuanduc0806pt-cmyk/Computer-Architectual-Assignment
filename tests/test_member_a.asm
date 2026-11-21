@@ -9,13 +9,7 @@
 # ==============================================================================
 
 .data
-# --- Bien dung chung theo Quy uoc Muc 3 (plan.md) ---
-board:          .space 32       # 32 o co the choi (index 0..31 <-> o 1..32)
-current_player: .word 3         # 1 = Do, 3 = Den (Den di truoc)
-start_square:   .word 0
-destination:    .word 0
-game_over:      .word 0
-
+# Because board.asm already owns these shared variables.
 # --- Chuoi phuc vu in ket qua test ---
 msg_init:       .asciiz "=== TEST 1: Khoi tao va in ban co ===\n"
 msg_coord_ok:   .asciiz "\n=== TEST 2: Chuyen doi toa do (1..32) -> PASS ===\n"
@@ -118,7 +112,7 @@ exit_test:
 # Luu y: Phai dat .include o cuoi file (sau main) de MARS khong nhay vao
 #        cac ham con khi bat dau chay tu dau segment .text.
 # ==============================================================================
-.include "../modules/board.asm"
-.include "../modules/coordinates.asm"
-.include "../modules/movement.asm"
-.include "../modules/promotion.asm"
+.include "../src/board.asm"
+.include "../src/coordinates.asm"
+.include "../src/movement.asm"
+.include "../src/promotion.asm"

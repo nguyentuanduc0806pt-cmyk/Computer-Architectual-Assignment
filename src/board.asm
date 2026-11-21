@@ -109,7 +109,7 @@ print_unknown:
     j    print_char
 
 print_inaccessible:
-    li   $a0, 95                # '_' for non-playable light squares
+    li   $a0, 45                # '-' for non-playable light squares (assignment's illustrated output uses -)
     j    print_char
 
 map_empty:
