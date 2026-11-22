@@ -11,14 +11,13 @@ startup_message: .asciiz "CO2008 CHECKERS\nProject setup successful. Multi-file 
 .text
 .globl main
 main:
-    # Temporary test for Member A's board + coordinates modules.
+    # Temporary test for Member A's modules.
     # Replace with the actual game loop later (Member B).
     li   $v0, 4
     la   $a0, startup_message
     syscall
 
-    jal  init_board
-    jal  print_board
+    jal  run_member_a_tests
 
     li   $v0, 10
     syscall
