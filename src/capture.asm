@@ -513,7 +513,9 @@ ac_done:
 #
 # Input:
 #   $a0 = current square
-#   $a1 = current player (1=Red, 3=Black)
+#
+# Uses:
+#   current_player = 1 (Red) or 3 (Black) (shared variable)
 #
 # Output:
 #   $v0 = 1 if at least one legal capture exists

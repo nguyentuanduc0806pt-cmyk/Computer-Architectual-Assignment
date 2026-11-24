@@ -110,7 +110,9 @@ available from its current position.
 
 Inputs:
 - $a0: Current square
-- $a1: Current player (1 = Red, 3 = Black)
+
+Uses:
+- current_player (shared variable: 1 = Red, 3 = Black)
 
 Output:
 - $v0 = 1: At least one legal capture exists
@@ -205,9 +207,9 @@ It will be integrated with:
 
 Update this section as development progresses.
 
-- [ ] validate_capture
-- [ ] apply_capture
-- [ ] check_capture
-- [ ] chain_capture
-- [ ] Independent testing
+- [x] validate_capture
+- [x] apply_capture
+- [x] check_capture
+- [x] chain_capture
+- [x] Independent testing
 - [ ] Integration testing
