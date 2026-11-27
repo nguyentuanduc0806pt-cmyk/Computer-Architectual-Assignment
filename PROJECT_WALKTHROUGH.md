@@ -17,9 +17,12 @@
    - [Turn 3 — Đức (Member A): Board State, Display & Coordinate Math](#turn-3--đức-member-a-board-state-display--coordinate-math)
    - [Turn 4 — Quang (Member B): Code Review Fix + Full Capture Engine & Winner Check](#turn-4--quang-member-b-code-review-fix--full-capture-engine--winner-check)
    - [Turn 5 — Đức (Member A): Normal Movement Rules & Execution](#turn-5--đức-member-a-normal-movement-rules--execution)
+   - [Turn 6 — Quang (Member B): Main Game Loop & Turn Helpers](#turn-6--quang-member-b-main-game-loop--turn-helpers)
+   - [Turn 7 — Đức (Member A): Pawn Promotion](#turn-7--đức-member-a-pawn-promotion)
+   - [Turn 8 — Extra Features & Polish (QoL + Advanced Ruleset)](#turn-8--extra-features--polish-qol--advanced-ruleset)
 5. [Quick Reference: Procedure Interface & Stack Summary](#5-quick-reference-procedure-interface--stack-summary)
 6. [Test Suite Overview](#6-test-suite-overview)
-7. [Current Project Status: What's Done, What's Left & Bugs to Fix](#7-current-project-status-whats-done-whats-left--bugs-to-fix)
+7. [Current Project Status](#7-current-project-status)
 
 ---
 
@@ -92,12 +95,12 @@ Notice the mathematical properties that make everything clean:
 
 ```mermaid
 flowchart TD
-    MAIN["main.asm (Member B)<br/>Game Loop & Input [TODO]"]
-    GC["game_control.asm (Member B)<br/>check_winner [DONE]"]
-    CAP["capture.asm (Member B)<br/>validate_capture, apply_capture,<br/>check_capture, chain_capture [DONE]"]
-    MOV["movement.asm (Member A)<br/>validate_normal_move,<br/>apply_normal_move [DONE]"]
-    PRO["promotion.asm (Member A)<br/>check_promotion [TODO STUB]"]
-    BRD["board.asm (Member A)<br/>Shared .data, init_board,<br/>print_board [DONE]"]
+    MAIN["main.asm (Member B)<br/>Game Loop, Mandatory Capture Flow,<br/>Legal Move Hints & Trap-Win [DONE]"]
+    GC["game_control.asm (Member B)<br/>Side/Mode Setup, Input, Banners,<br/>Feedback & check_winner [DONE]"]
+    CAP["capture.asm (Member B)<br/>validate/apply/check/chain_capture,<br/>Mandatory Scan & Hints [DONE]"]
+    MOV["movement.asm (Member A)<br/>validate/apply_normal_move,<br/>has/print_normal_moves [DONE]"]
+    PRO["promotion.asm (Member A)<br/>check_promotion [DONE]"]
+    BRD["board.asm (Member A)<br/>Shared .data, init_board,<br/>Enhanced print_board [DONE]"]
     CRD["coordinates.asm (Member A)<br/>square_to_coord,<br/>coord_to_square [DONE]"]
 
     MAIN --> BRD
@@ -115,19 +118,22 @@ flowchart TD
     GC --> BRD
 ```
 
-### Target Turn Lifecycle (as designed in `plan.md`)
+### Turn Lifecycle (Implemented in `src/main.asm`)
 
 ```mermaid
 flowchart LR
-    A["print_board"] --> B["Read start & dest"]
-    B --> C{"validate_normal_move?"}
-    C -- Yes --> D["apply_normal_move"] --> E["check_promotion"] --> J["check_winner"]
-    C -- No --> F{"validate_capture?"}
-    F -- No --> B
-    F -- Yes --> G["apply_capture"] --> H["check_promotion"] --> I["chain_capture<br/>(loops check_capture →<br/>apply_capture → check_promotion)"] --> J
-    J --> K{"game_over?"}
-    K -- No --> L["Switch current_player<br/>(3 ↔ 1)"] --> A
-    K -- Yes --> M["Announce Winner & Exit"]
+    S["choose_player_color +<br/>choose_game_mode + init_board"] --> A["print_board +<br/>print_turn_banner"]
+    A --> MC{"mandatory_capture &&<br/>has_any_capture?"}
+    MC -- Yes --> ML["List pieces that<br/>must capture"] --> B["Pick start square &<br/>show legal moves/captures"]
+    MC -- No --> B
+    B --> D["Pick dest square<br/>(0 = reselect piece)"]
+    D --> C{"Valid normal move?<br/>(when not forced to jump)"}
+    C -- Yes --> NM["apply_normal_move →<br/>Move feedback → check_promotion"] --> W{"Opponent 0 pieces OR<br/>0 legal moves?"}
+    C -- No --> F{"Valid capture?"}
+    F -- No --> D
+    F -- Yes --> CP["apply_capture → Capture feedback →<br/>check_promotion → chain_capture"] --> W
+    W -- No --> SW["switch_player (3 ↔ 1)"] --> A
+    W -- Yes --> END["print_board + Win reason +<br/>announce_winner & Exit"]
 ```
 
 ---
@@ -335,7 +341,7 @@ chain_capture  ──►  check_capture  ──►  validate_capture  ──► 
 ---
 
 ### Turn 5 — Đức (Member A): Normal Movement Rules & Execution
-* **Date:** Nov 22, 2026 *(latest commit)*
+* **Date:** Nov 22, 2026
 * **Commit:** `4ecea24` (*update board and generate movement rules and step.*)
 * **Files changed/added:** `src/movement.asm`, `src/movement.md`, `src/board.asm`, `src/main.asm`.
 
@@ -364,73 +370,91 @@ This turn completed **Milestone 3** and King movement from **Milestone 4**.
 
 ---
 
+### Turn 6 — Quang (Member B): Main Game Loop & Turn Helpers
+* **Commit:** `efb5901` (*Complete main game loop, turn helpers, and Member B doc updates*)
+* **Files updated:** `src/main.asm`, `src/game_control.asm`, `src/capture.md`, `plan.md`
+
+Connected all modules into a playable turn loop: added `print_turn_banner`, `read_player_move`, `switch_player`, and `announce_winner` in `src/game_control.asm`, wired the normal-move → capture → chain-capture → winner-check cycle in `src/main.asm`, and fixed the stale `check_capture` doc comment.
+
+---
+
+### Turn 7 — Đức (Member A): Pawn Promotion
+* **Commit:** `0a876fa` (*check promotion*)
+* **Files updated:** `src/promotion.asm`, `src/promotion.md`
+
+Implemented `check_promotion($a0 = destination)` as a fast leaf procedure (no stack needed):
+* Rejects squares outside `1..32`.
+* Red pawn (`1`) on squares `29..32` (bottom row) → promoted to Red King (`2`).
+* Black pawn (`3`) on squares `1..4` (top row) → promoted to Black King (`4`).
+* Everything else (empty, already King, or middle rows) is left untouched.
+
+Because `main.asm` and `chain_capture` both call `check_promotion` right after moving/jumping and *before* `check_capture`, a pawn that lands on the back row mid-chain immediately becomes a King and can keep capturing backwards on the same turn.
+
+---
+
+### Turn 8 — Extra Features & Polish (QoL + Advanced Ruleset)
+* **Files updated/added:** `src/board.asm`, `src/movement.asm`, `src/capture.asm`, `src/game_control.asm`, `src/main.asm`, `tests/test_tier1_features.asm`, plus updated docs.
+
+To go beyond the bare minimum (Section 3 of `CA_Assignment_261.pdf`) without breaking any existing unit tests, we added six clean improvements:
+
+1. **Boxed Board Display + 1–32 Reference Map (`src/board.asm`):** `print_board` now prints a bordered 8×8 ASCII grid alongside a matching `1–32` square map, legend, and live Black/Red piece counts (`24`-byte stack frame saving `$s0–$s4, $ra`).
+2. **Player Color Choice (`src/board.asm`, `src/game_control.asm`):** Added shared global `player1_color` and `choose_player_color` at startup. Player 1 picks Black or Red (Black still moves first), and turn/win banners display both Player 1/2 and color.
+3. **Mandatory Initial Capture Ruleset (`src/board.asm`, `src/capture.asm`, `src/game_control.asm`, `src/main.asm`):** Added `mandatory_capture` global and `choose_game_mode` (`1 = Official English Checkers`, `2 = Casual`). When enabled, `has_any_capture` and `print_mandatory_capture_pieces` check the whole board each turn, list pieces that can capture, and block non-capturing moves.
+4. **Show Selected Piece & Legal Moves (`src/movement.asm`, `src/capture.asm`, `src/main.asm`):** Split input into pick-piece (`read_start_square`) and pick-destination (`read_dest_square`). Selecting a piece prints its name and legal normal/capture destinations (`has_normal_move`, `print_normal_moves`, `has_capture_from`, `print_capture_moves`), rejects blocked pieces immediately, and lets the player enter `0` to pick another piece. `chain_capture` also refreshes the board and prints `Available chain landing squares` before every follow-up jump.
+5. **Standard Checkers Move & Promotion Feedback (`src/game_control.asm`, `src/capture.asm`, `src/main.asm`):** Prints `Move played: <start>-<dest>`, `Captured <Side>'s piece! (<start>x<dest>)`, and `Promoted to Red/Black King at square <n>!` immediately when a pawn promotes (both on normal moves and mid-chain).
+6. **Win by Trapping (`src/main.asm`, `src/game_control.asm`):** Added `player_has_any_legal_move($a0 = player)` in `src/main.asm` (scanning `1..32` via `has_normal_move` and `has_capture_from`). Keeping it in `main.asm` preserves clean module boundaries so `test_check_winner.asm` doesn't need to include `movement.asm` or `capture.asm`.
+
+---
+
 ## 5. Quick Reference: Procedure Interface & Stack Summary
 
-| Procedure | File | Owner | Inputs | Outputs | Mutates `board`? | Stack Frame | Status |
-|---|---|---|---|---|:---:|---|:---:|
-| `init_board` | `src/board.asm` | A | None | None | Yes (all 32B) | None (leaf) | Done |
-| `print_board` | `src/board.asm` | A | None | Console output | No | 16 B (`$s0–$s2, $ra`) | Done |
-| `square_to_coord` | `src/coordinates.asm` | A | `$a0 = sq (1..32)` | `$v0 = row`, `$v1 = col` (or `-1,-1`) | No | None (leaf) | Done |
-| `coord_to_square` | `src/coordinates.asm` | A | `$a0 = row`, `$a1 = col` | `$v0 = sq (1..32)` or `-1` | No | None (leaf) | Done |
-| `validate_normal_move` | `src/movement.asm` | A | `$a0 = start`, `$a1 = dest`, `$a2 = player` | `$v0 = 1` (valid) / `0` (invalid) | No | 24 B (`$s0–$s4, $ra`) | Done |
-| `apply_normal_move` | `src/movement.asm` | A | `$a0 = start`, `$a1 = dest` | None | Yes (2 B) | None (leaf) | Done |
-| `check_promotion` | `src/promotion.asm` | A | `$a0 = dest_sq` | None | Yes (0–1 B) | TBD | **TODO** |
-| `validate_capture` | `src/capture.asm` | B | `$a0 = start`, `$a1 = dest`, `$a2 = player` | `$v0 = 1` (valid) / `0` (invalid) | No | 40 B (`$s0–$s7, $ra`) | Done |
-| `apply_capture` | `src/capture.asm` | B | `$a0 = start`, `$a1 = dest` *(reads `current_player`)* | `$v0 = 1` (ok) / `0` (fail) | Yes (3 B) | 32 B (`$s0–$s5, $ra`) | Done |
-| `check_capture` | `src/capture.asm` | B | `$a0 = sq` *(reads `current_player`)* | `$v0 = 1` (exists) / `0` (none) | No | 40 B (`$s0–$s7, $ra`) | Done |
-| `chain_capture` | `src/capture.asm` | B | `$a0 = sq` *(reads `current_player`)* | `$v0 = 1` (done) / `0` (bad state) | Yes (loop) | 16 B (`$s0–$s2, $ra`) | Done |
-| `check_winner` | `src/game_control.asm` | B | `$a0 = player (1 or 3)` | `$v0 = 1` (eliminated) / `0` (alive) / `-1` (err) | No | None (leaf) | Done |
-| `main` | `src/main.asm` | B | None | Runs full game | Via calls | TBD | **TODO** |
+| Procedure | File | Owner | Inputs | Outputs | Mutates `board`? | Stack Frame |
+|---|---|---|---|---|:---:|---|
+| `init_board` | `src/board.asm` | A | None | None | Yes (all 32 B) | Leaf |
+| `print_board` | `src/board.asm` | A | None | Boxed board, map & counts | No | 24 B (`$s0–$s4, $ra`) |
+| `square_to_coord` | `src/coordinates.asm` | A | `$a0 = sq (1..32)` | `$v0 = row`, `$v1 = col` (or `-1,-1`) | No | Leaf |
+| `coord_to_square` | `src/coordinates.asm` | A | `$a0 = row`, `$a1 = col` | `$v0 = sq (1..32)` or `-1` | No | Leaf |
+| `validate_normal_move` | `src/movement.asm` | A | `$a0 = start`, `$a1 = dest`, `$a2 = player` | `$v0 = 1` / `0` | No | 24 B (`$s0–$s4, $ra`) |
+| `apply_normal_move` | `src/movement.asm` | A | `$a0 = start`, `$a1 = dest` | None | Yes (2 B) | Leaf |
+| `has_normal_move` | `src/movement.asm` | A | `$a0 = sq`, `$a1 = player` | `$v0 = 1` / `0` | No | 24 B (`$s0–$s4, $ra`) |
+| `print_normal_moves` | `src/movement.asm` | A | `$a0 = sq`, `$a1 = player` | Prints list; `$v0 = count` | No | 32 B (`$s0–$s6, $ra`) |
+| `check_promotion` | `src/promotion.asm` | A | `$a0 = dest_sq` | None | Yes (0–1 B) | Leaf |
+| `validate_capture` | `src/capture.asm` | B | `$a0 = start`, `$a1 = dest`, `$a2 = player` | `$v0 = 1` / `0` | No | 40 B (`$s0–$s7, $ra`) |
+| `apply_capture` | `src/capture.asm` | B | `$a0 = start`, `$a1 = dest` *(reads `current_player`)* | `$v0 = 1` / `0` | Yes (3 B) | 32 B (`$s0–$s5, $ra`) |
+| `check_capture` | `src/capture.asm` | B | `$a0 = sq` *(reads `current_player`)* | `$v0 = 1` / `0` | No | 40 B (`$s0–$s7, $ra`) |
+| `chain_capture` | `src/capture.asm` | B | `$a0 = sq` *(reads `current_player`)* | `$v0 = 1` / `0` | Yes (loop) | 24 B (`$s0–$s3, $ra`) |
+| `has_capture_from` | `src/capture.asm` | B | `$a0 = sq`, `$a1 = player` | `$v0 = 1` / `0` | No | 24 B (`$s0–$s4, $ra`) |
+| `has_any_capture` | `src/capture.asm` | B | `$a0 = player` | `$v0 = 1` / `0` | No | 16 B (`$s0–$s1, $ra`) |
+| `print_capture_moves` | `src/capture.asm` | B | `$a0 = sq`, `$a1 = player` | Prints list; `$v0 = count` | No | 32 B (`$s0–$s6, $ra`) |
+| `print_mandatory_capture_pieces` | `src/capture.asm` | B | `$a0 = player` | Prints list; `$v0 = count` | No | 16 B (`$s0–$s2, $ra`) |
+| `print_capture_feedback` | `src/capture.asm` | B | `$a0 = start`, `$a1 = dest`, `$a2 = player` | Console output | No | Leaf |
+| `check_winner` | `src/game_control.asm` | B | `$a0 = player (1 or 3)` | `$v0 = 1` (0 pieces) / `0` / `-1` | No | Leaf |
+| `choose_player_color` / `choose_game_mode` | `src/game_control.asm` | B | Interactive input | Updates `player1_color` / `mandatory_capture` | No | Leaf |
+| `print_turn_banner` / `announce_winner` / `switch_player` | `src/game_control.asm` | B | Shared globals (`$a0 = winner` for announce) | Turn/win banners, toggles player | No | Leaf |
+| `read_start_square` / `read_dest_square` / `print_piece_name` / `print_move_feedback` / `print_promotion_feedback` / `print_win_reason` | `src/game_control.asm` | B | Square / piece / reason codes | Console I/O | No | Leaf |
+| `main` & `player_has_any_legal_move` | `src/main.asm` | B | `$a0 = player` (for helper) | Full game / `$v0 = 1` or `0` | Via calls | 16 B for helper |
 
 ---
 
 ## 6. Test Suite Overview
 
-All tests live in `tests/` and can be assembled individually in MARS:
+All 7 test files live in `tests/` and run standalone in MARS 4.5 (with *Assemble all files in directory* disabled):
 
-| Test File | Author | What It Tests | Key Cases Covered |
-|---|---|---|---|
-| `tests/test_member_a.asm` | A (fixed by B) | `init_board`, `print_board`, `square_to_coord`, `coord_to_square`, normal move | Initial 8×8 print; all 32 squares round-trip bijection (`1..32`); Black normal move `21 → 17` |
-| `tests/test_member_b.asm` | B | `validate_capture` | `C1–C10`: Black/Red forward capture, board unchanged after validation, empty middle, friendly middle, occupied dest, backward pawn (fail), backward king (pass), wrong player, bad distance |
-| `tests/test_apply_capture.asm` | B | `apply_capture` | Valid jump updates exactly 3 squares (`21 → 14` over `17`); invalid jump leaves entire board untouched |
-| `tests/test_check_capture.asm` | B | `check_capture` | `CC1–CC5`: Black pawn forward capture, no capture, backward pawn blocked, backward king allowed, Red pawn forward capture |
-| `tests/test_chain_capture.asm` | B | `chain_capture` | Interactive follow-up capture (`14 → 7` over `10`), verifies board bytes after chain finishes |
-| `tests/test_check_winner.asm` | B | `check_winner` | `W1–W5`: Red pawn alive, Black king alive, Red eliminated, Black eliminated, empty board |
+| Test File | What It Tests | Key Cases Covered |
+|---|---|---|
+| `tests/test_member_a.asm` | Board init/display, coordinates, normal move | Enhanced board render; 32-square round-trip (`1..32`); Black normal move `21 → 17` |
+| `tests/test_member_b.asm` | `validate_capture` | `C1–C10`: forward/backward pawn & king jumps, ownership, distance, board unchanged |
+| `tests/test_apply_capture.asm` | `apply_capture` | Valid jump updates 3 bytes (`21 → 14` over `17`); invalid jump leaves board untouched |
+| `tests/test_check_capture.asm` | `check_capture` | `CC1–CC5`: forward pawn, no capture, backward pawn blocked, backward king allowed, Red pawn |
+| `tests/test_chain_capture.asm` | `chain_capture` | Interactive chain jump (`14 → 7` over `10`) with board refresh, hints & `14x7` feedback |
+| `tests/test_check_winner.asm` | `check_winner` | `W1–W5`: Red/Black alive, Red/Black eliminated, empty board |
+| `tests/test_tier1_features.asm` | Promotion, move/capture hints, mandatory scan, trap detection | `T1–T6`: Red/Black promotion, King legal moves (`14 15 22 23`), mandatory capture piece list, Figure 9 trapped opponent, capture-only not trapped, immutability |
 
 ---
 
-## 7. Current Project Status: What's Done, What's Left & Bugs to Fix
+## 7. Current Project Status
 
-### 7.1. Remaining Work Before the Game Is Playable
-
-1. **Member A — Implement `check_promotion` in `src/promotion.asm`:**
-   * Input: `$a0 = destination square (1..32)`.
-   * Validate `$a0 ∈ 1..32`. Load `piece = board[$a0 - 1]`.
-   * If `piece == 1` (Red pawn) and `$a0 >= 29` (squares `29..32`, row `7`) → store `2` (Red king).
-   * If `piece == 3` (Black pawn) and `$a0 <= 4` (squares `1..4`, row `0`) → store `4` (Black king).
-   * Otherwise leave `board[$a0 - 1]` unchanged. (Can be a tiny leaf procedure with no stack!)
-2. **Member B — Implement the Main Game Loop in `src/main.asm` & helpers in `src/game_control.asm`:**
-   * Call `init_board`, set `current_player = 3`, `game_over = 0`.
-   * Loop while `game_over == 0`:
-     1. `print_board` and print whose turn it is (Black or Red).
-     2. Read `start_square` and `destination` from the user.
-     3. Try `validate_normal_move(start, dest, current_player)`:
-        * If valid (`1`): `apply_normal_move(start, dest)` → `check_promotion(dest)`.
-     4. Else try `validate_capture(start, dest, current_player)`:
-        * If valid (`1`): `apply_capture(start, dest)` → `check_promotion(dest)` → `chain_capture(dest)`.
-        * If invalid (`0`): print invalid move message and re-prompt **without** switching turns.
-     5. Determine the opponent (`opponent = 4 - current_player`, since `4 - 3 = 1` and `4 - 1 = 3`) and call `check_winner(opponent)`.
-        * If `$v0 == 1`: set `game_over = 1`, print final board & winner announcement, and exit.
-        * Otherwise: set `current_player = opponent` and continue the loop.
-3. **End-to-End Integration Testing (Both):**
-   * Run all 13 scenarios from `tests/test_cases.md` together, especially **Scenario 11 & 12** (mid-chain pawn promotion immediately followed by a backward king capture) and a full game to win condition.
-
-### 7.2. Small Discrepancies Found in the Current Codebase (Fix Before Integration)
-
-| # | File & Line | Issue | Recommended Fix |
-|---:|---|---|---|
-| 1 | `src/main.asm:20` | Calls `jal run_member_a_tests`, which is **not defined** anywhere in `src/` (or `tests/`). Assembling `src/` in MARS right now will fail with an unresolved symbol error. | Replace with the real game loop (or temporarily restore `init_board` + `print_board` until the game loop is written). |
-| 2 | `src/board.asm:112` | `print_inaccessible` was changed from `'_'` (`95`) to `'-'` (`45`) by Quang in commit `13958c7` to match the PDF, then accidentally reverted back to `'_'` (`95`) by Đức in commit `4ecea24`. | Agree on `'-'` vs `'_'` against `CA_Assignment_261.pdf` and keep it consistent. |
-| 3 | `src/capture.asm:516` & `src/capture.md:113` | Header comments say `check_capture` takes `$a1 = current player`, while the actual assembly (`src/capture.asm:552-553`) ignores `$a1` and loads global `current_player` — which matches `plan.md` and `chain_capture`. | Update the comments in `src/capture.asm` and `src/capture.md` to list `$a0` only (and note global `current_player`). |
-| 4 | `src/capture.md:208-211` & `plan.md:26-33` | Status checkboxes are slightly stale (`capture.md` still shows unchecked boxes even though all 4 functions are done; `plan.md` still shows Member A's completed functions unchecked). | Update checkboxes after final integration so documentation matches code state. |
-| 5 | `src/movement.asm:141-142` | In `apply_normal_move`, writing `dest` and then clearing `start` would erase a piece if ever called directly with `start == dest` (safe whenever `validate_normal_move` runs first, since `dest` must be empty). | Optional guard `beq $a0, $a1, anm_done`, or document that callers must validate first. |
+- **Implementation:** Complete — all required bare-minimum features plus QoL and advanced ruleset extras are implemented and verified in MARS 4.5.
+- **Previous discrepancies:** All items previously listed here (stale `main.asm` test hook, inconsistent inaccessible cell marker, `check_capture` doc comment, stale checkboxes, hardcoded local doc links) have been resolved.
+- **Verification:** All 7 unit test harnesses pass and `src/main.asm` assembles cleanly (`0` errors) and runs end-to-end.
+- **Remaining:** Final report review and live demo/Q&A preparation for both teammates.

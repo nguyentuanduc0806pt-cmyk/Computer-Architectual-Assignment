@@ -1,215 +1,91 @@
-
 # Capture Module — CO2008 Checkers
 
-**Owner:** Member B
+**Owner:** Member B  
+**Source file:** [capture.asm](./capture.asm)
 
-## 1. Module Overview
+---
 
-This module implements the capturing mechanics of the
-English Checkers game using MIPS Assembly.
+## 1. Overview
 
-Responsibilities:
-- Validate capture movements.
-- Execute valid captures.
-- Detect available consecutive captures.
-- Handle chain captures.
+This module handles everything related to jumping and capturing pieces in English Checkers:
+- Validating a 2-square diagonal jump (`validate_capture`)
+- Executing the jump and removing the jumped piece (`apply_capture`)
+- Checking whether a piece can jump (`check_capture`, `has_capture_from`) or whether any piece of a player can jump (`has_any_capture`)
+- Running mandatory chain captures (`chain_capture`)
+- Printing available jump targets, mandatory capturing pieces, and standard capture notation (`print_capture_moves`, `print_mandatory_capture_pieces`, `print_capture_feedback`)
 
-Source file: `capture.asm`
+It uses the shared 32-byte `board` array and `current_player` declared in [board.asm](./board.asm), where square `n` (`1..32`) maps to `board[n - 1]`.
 
-## 2. Board Representation
+---
 
-The module uses the shared 32-byte board array
-defined in `board.asm`.
+## 2. Capture Rules
 
-| Value | Piece |
-|---|---|
-| 0 | Empty |
-| 1 | Red pawn |
-| 2 | Red king |
-| 3 | Black pawn |
-| 4 | Black king |
+A jump is valid when:
+1. The starting square holds a piece belonging to the moving player.
+2. The destination is empty and lies 2 rows and 2 columns away diagonally.
+3. Pawns jump forward only (`+2` rows for Red, `-2` rows for Black); Kings can jump both forward and backward.
+4. The middle square `(start + dest) / 2` contains an opponent piece.
 
-Square numbers range from 1 to 32.
+When a capture runs, the starting square and middle square are cleared (`0`) and the moving piece is placed at the destination.
 
-Array index = Square number - 1.
+---
 
-Coordinates use zero-based indexing.
+## 3. Core Procedures
 
-## 3. Capture Rules
+### `validate_capture`
+- **Inputs:** `$a0 = start`, `$a1 = destination`, `$a2 = player (1 or 3)`
+- **Output:** `$v0 = 1` if legal, `0` otherwise.
+- **Read-only:** Never modifies `board`.
+- **Stack:** 40 bytes (`$s0–$s7, $ra`).
 
-A capture requires:
-1. The moving piece belongs to the current player.
-2. The opponent occupies the intermediate square.
-3. The landing square is empty.
-4. The movement covers exactly two squares diagonally.
-5. Pawns capture forwards only.
-6. Kings capture forwards and backwards.
+### `apply_capture`
+- **Inputs:** `$a0 = start`, `$a1 = destination` (reads global `current_player`)
+- **Output:** `$v0 = 1` if executed, `0` if invalid.
+- **Behavior:** Calls `validate_capture` first so invalid inputs never touch `board`, then computes the middle square and updates all 3 bytes.
+- **Stack:** 32 bytes (`$s0–$s5, $ra`).
 
-After a successful capture:
-- The starting square becomes empty.
-- The opponent's piece is removed.
-- The moving piece occupies the landing square.
+### `check_capture`
+- **Input:** `$a0 = current square` (reads global `current_player`)
+- **Output:** `$v0 = 1` if at least one capture exists from `$a0`, else `0`.
+- **Read-only:** Never modifies `board`.
+- **Stack:** 40 bytes (`$s0–$s7, $ra`).
 
-## 4. Procedure Specifications
+### `chain_capture`
+- **Input:** `$a0 = current square` (called after the initial capture and its promotion check)
+- **Output:** `$v0 = 1` when the chain finishes normally, `0` if the initial arguments are invalid.
+- **Loop behavior:**
+  1. Calls `check_capture($s0)`. If no jump remains, prints `"No further capture available. Chain complete."` and returns `1`.
+  2. Calls `print_board` to refresh the board, then calls `print_capture_moves` to show all valid chain landing squares.
+  3. Prompts for the next landing square and calls `apply_capture`. If invalid, asks again without changing the board.
+  4. Calls `print_capture_feedback` (e.g., `Captured Red's piece! (14x7)`).
+  5. Updates the current square and immediately calls `check_promotion`. If the piece was just promoted to King, prints a promotion notice and loops back to `check_capture` so the new King can jump backwards right away.
+- **Stack:** 24 bytes (`$s0–$s3, $ra`).
 
-### 4.1 validate_capture
+---
 
-Purpose:
-Determine whether a proposed capture is legal.
+## 4. Helper Procedures (Mandatory Capture, Move Hints & Feedback)
 
-Inputs:
-- $a0: Starting square
-- $a1: Destination square
-- $a2: Current player (1 = Red, 3 = Black)
+All query helpers below are **strictly read-only** and use the shared offset tables `cap_dr` / `cap_dc` (`(-2,-2), (-2,+2), (+2,-2), (+2,+2)`):
 
-Output:
-- $v0 = 1: Valid capture
-- $v0 = 0: Invalid capture
+| Procedure | Inputs | Output / Effect | Stack |
+|---|---|---|---|
+| `has_capture_from` | `$a0 = sq`, `$a1 = player` | `$v0 = 1` if piece at `sq` can capture for `player`, else `0` (does not depend on global `current_player`) | 24 B (`$s0–$s4, $ra`) |
+| `has_any_capture` | `$a0 = player` | Scans `1..32`; `$v0 = 1` if any piece of `player` can capture, else `0` | 16 B (`$s0–$s1, $ra`) |
+| `print_capture_moves` | `$a0 = sq`, `$a1 = player` | Prints all legal capture landing squares from `sq` in ascending order; returns count in `$v0` | 32 B (`$s0–$s6, $ra`) |
+| `print_mandatory_capture_pieces` | `$a0 = player` | Prints all squares (`1..32`) of `player` that have a legal capture; returns count in `$v0` | 16 B (`$s0–$s2, $ra`) |
+| `print_capture_feedback` | `$a0 = start`, `$a1 = dest`, `$a2 = player` | Prints `Captured Red's piece! (<start>x<dest>)` or `Captured Black's piece! (<start>x<dest>)` | Leaf (no stack) |
 
-Important:
-This procedure must not modify the board.
+---
 
-### 4.2 apply_capture
+## 5. Dependencies & Status
 
-Purpose:
-Execute a previously proposed capture.
+- **Depends on:** `board.asm`, `coordinates.asm`, `promotion.asm`
+- **Used by:** `main.asm` and the test harnesses in `tests/`
 
-Inputs:
-- $a0 = Starting square
-- $a1 = Destination square
-
-Uses:
-- current_player (shared variable)
-
-Output:
-- $v0 = 1: Capture successfully executed
-- $v0 = 0: Capture failed
-
-Algorithm:
-1. Validate the proposed capture.
-2. Retrieve the moving piece.
-3. Calculate the intermediate square.
-4. Calculate the three board addresses.
-5. Clear the starting square.
-6. Remove the opponent from the intermediate square.
-7. Place the moving piece at the destination.
-
-Board modification:
-This procedure modifies exactly three playable squares
-when a capture succeeds.
-
-Testing:
-- Valid capture updates all three squares.
-- Invalid capture leaves the board unchanged.
-
-### 4.3 check_capture
-
-Purpose:
-Determine whether a piece has at least one legal capture
-available from its current position.
-
-Inputs:
-- $a0: Current square
-
-Uses:
-- current_player (shared variable: 1 = Red, 3 = Black)
-
-Output:
-- $v0 = 1: At least one legal capture exists
-- $v0 = 0: No legal capture exists
-
-Algorithm:
-1. Retrieve the current piece from the board.
-2. Determine permitted capture directions.
-3. Convert the current square into coordinates.
-4. Generate possible landing coordinates.
-5. Reject coordinates outside the playable board.
-6. Convert candidate coordinates into square numbers.
-7. Call validate_capture for each candidate.
-8. Return 1 as soon as a legal capture is found.
-9. Return 0 if no candidate is legal.
-
-Board modification:
-This procedure does not modify the board.
-
-Dependencies:
-- square_to_coord
-- coord_to_square
-- validate_capture
-
-### 4.4 chain_capture
-
-Purpose:
-Handle consecutive captures by the same piece during
-the same player's turn.
-
-Input:
-- $a0 = Current square of the capturing piece
-
-Output:
-- $v0 = 1: Chain completed normally
-- $v0 = 0: Invalid initial state
-
-Shared variables:
-- current_player
-- board
-
-Algorithm:
-1. Receive the current square after the initial capture.
-2. Check whether another capture is available.
-3. Prompt the player for another landing square.
-4. Call apply_capture.
-5. If invalid, request another destination.
-6. Update the current square after a successful capture.
-7. Call check_promotion immediately.
-8. Repeat until no further capture is available.
-
-Dependencies:
-- check_capture
-- apply_capture
-- check_promotion
-
-Important:
-The same piece and same player must continue throughout
-the entire capture chain.
-
-The initial capture and its promotion check must already
-have been performed by the caller.
-
-## 5. Testing
-
-| Test | Scenario | Expected |
-|---|---|---|
-| C1 | Valid forward capture | Valid |
-| C2 | No opponent between pieces | Invalid |
-| C3 | Own piece in middle | Invalid |
-| C4 | Occupied landing square | Invalid |
-| C5 | Pawn captures backwards | Invalid |
-| C6 | King captures backwards | Valid |
-| C7 | Two consecutive captures | Valid chain |
-| C8 | No further capture | End chain |
-| C9 | Promotion during capture | Promote immediately |
-| C10 | Invalid destination during chain | Reject move |
-
-## 6. Integration Dependencies
-
-This module depends on:
-- board.asm
-- coordinates.asm
-- promotion.asm
-
-It will be integrated with:
-- movement.asm
-- game_control.asm
-- main.asm
-
-## 7. Implementation Status
-
-Update this section as development progresses.
-
-- [x] validate_capture
-- [x] apply_capture
-- [x] check_capture
-- [x] chain_capture
-- [x] Independent testing
-- [ ] Integration testing
+- [x] `validate_capture`
+- [x] `apply_capture`
+- [x] `check_capture`
+- [x] `chain_capture`
+- [x] Mandatory capture, move-hint & notation feedback helpers
+- [x] Independent unit tests (`test_member_b`, `test_apply_capture`, `test_check_capture`, `test_chain_capture`, `test_tier1_features`)
+- [x] Integration testing with `main.asm`

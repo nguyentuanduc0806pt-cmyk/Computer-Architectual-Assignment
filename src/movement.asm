@@ -1,3 +1,8 @@
+.data
+.align 2
+mv_dr: .word -1, -1,  1,  1
+mv_dc: .word -1,  1, -1,  1
+
 .text
 
 .globl validate_normal_move
@@ -142,4 +147,196 @@ apply_normal_move:
     sb   $zero, 0($t1)          # Clear start square
 
 anm_done:
+    jr   $ra
+
+
+# ============================================================================
+# HAS NORMAL MOVE
+# Checks whether the piece at square $a0 belonging to player $a1 has at least
+# one legal 1-square diagonal move. Does NOT modify the board.
+#
+# Input:  $a0 = square (1..32), $a1 = player (1 = Red, 3 = Black)
+# Output: $v0 = 1 if at least one normal move exists, 0 otherwise
+# ============================================================================
+.globl has_normal_move
+has_normal_move:
+    addiu $sp, $sp, -24
+    sw   $s0, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $s2, 8($sp)
+    sw   $s3, 12($sp)
+    sw   $s4, 16($sp)
+    sw   $ra, 20($sp)
+
+    move $s0, $a0               # $s0 = square
+    move $s1, $a1               # $s1 = player
+
+    # Fast range check: 1..32
+    slti $t0, $s0, 1
+    bne  $t0, $zero, hnm_none
+    slti $t0, $s0, 33
+    beq  $t0, $zero, hnm_none
+
+    # Fast ownership check on board[square - 1]
+    la   $t0, board
+    addiu $t1, $s0, -1
+    addu $t0, $t0, $t1
+    lbu  $t2, 0($t0)
+
+    li   $t3, 1
+    beq  $s1, $t3, hnm_check_red
+    li   $t3, 3
+    beq  $s1, $t3, hnm_check_black
+    j    hnm_none
+
+hnm_check_red:
+    li   $t3, 1
+    beq  $t2, $t3, hnm_owned
+    li   $t3, 2
+    beq  $t2, $t3, hnm_owned
+    j    hnm_none
+
+hnm_check_black:
+    li   $t3, 3
+    beq  $t2, $t3, hnm_owned
+    li   $t3, 4
+    beq  $t2, $t3, hnm_owned
+    j    hnm_none
+
+hnm_owned:
+    move $a0, $s0
+    jal  square_to_coord        # $v0 = row, $v1 = col
+    move $s2, $v0               # $s2 = row
+    move $s3, $v1               # $s3 = col
+
+    li   $s4, 0                 # $s4 = direction index (0..3)
+
+hnm_loop:
+    slti $t0, $s4, 4
+    beq  $t0, $zero, hnm_none
+
+    sll  $t1, $s4, 2            # byte offset = i * 4
+    la   $t2, mv_dr
+    addu $t2, $t2, $t1
+    lw   $t3, 0($t2)            # $t3 = dr
+    la   $t2, mv_dc
+    addu $t2, $t2, $t1
+    lw   $t4, 0($t2)            # $t4 = dc
+
+    addu $a0, $s2, $t3          # candidate row
+    addu $a1, $s3, $t4          # candidate col
+    jal  coord_to_square        # $v0 = candidate square or -1
+    bltz $v0, hnm_next
+
+    move $a0, $s0
+    move $a1, $v0
+    move $a2, $s1
+    jal  validate_normal_move
+    bne  $v0, $zero, hnm_found
+
+hnm_next:
+    addiu $s4, $s4, 1
+    j    hnm_loop
+
+hnm_found:
+    li   $v0, 1
+    j    hnm_done
+
+hnm_none:
+    li   $v0, 0
+
+hnm_done:
+    lw   $s0, 0($sp)
+    lw   $s1, 4($sp)
+    lw   $s2, 8($sp)
+    lw   $s3, 12($sp)
+    lw   $s4, 16($sp)
+    lw   $ra, 20($sp)
+    addiu $sp, $sp, 24
+    jr   $ra
+
+
+# ============================================================================
+# PRINT NORMAL MOVES
+# Prints all legal 1-square diagonal destination squares for the piece at $a0
+# belonging to player $a1 (space-separated, ascending order). Read-only.
+#
+# Input:  $a0 = square (1..32), $a1 = player (1 = Red, 3 = Black)
+# Output: $v0 = number of legal normal destinations printed
+# ============================================================================
+.globl print_normal_moves
+print_normal_moves:
+    addiu $sp, $sp, -32
+    sw   $s0, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $s2, 8($sp)
+    sw   $s3, 12($sp)
+    sw   $s4, 16($sp)
+    sw   $s5, 20($sp)
+    sw   $s6, 24($sp)
+    sw   $ra, 28($sp)
+
+    move $s0, $a0               # $s0 = square
+    move $s1, $a1               # $s1 = player
+    li   $s5, 0                 # $s5 = count of moves printed
+
+    move $a0, $s0
+    jal  square_to_coord
+    bltz $v0, pnm_done
+    move $s2, $v0               # $s2 = row
+    move $s3, $v1               # $s3 = col
+
+    li   $s4, 0                 # $s4 = direction index (0..3)
+
+pnm_loop:
+    slti $t0, $s4, 4
+    beq  $t0, $zero, pnm_done
+
+    sll  $t1, $s4, 2
+    la   $t2, mv_dr
+    addu $t2, $t2, $t1
+    lw   $t3, 0($t2)
+    la   $t2, mv_dc
+    addu $t2, $t2, $t1
+    lw   $t4, 0($t2)
+
+    addu $a0, $s2, $t3
+    addu $a1, $s3, $t4
+    jal  coord_to_square
+    bltz $v0, pnm_next
+
+    move $s6, $v0               # save candidate square
+    move $a0, $s0
+    move $a1, $s6
+    move $a2, $s1
+    jal  validate_normal_move
+    beq  $v0, $zero, pnm_next
+
+    # Print space separator before 2nd+ items
+    beq  $s5, $zero, pnm_print_num
+    li   $a0, 32                # ' '
+    li   $v0, 11
+    syscall
+
+pnm_print_num:
+    move $a0, $s6
+    li   $v0, 1
+    syscall
+    addiu $s5, $s5, 1
+
+pnm_next:
+    addiu $s4, $s4, 1
+    j    pnm_loop
+
+pnm_done:
+    move $v0, $s5               # return count
+    lw   $s0, 0($sp)
+    lw   $s1, 4($sp)
+    lw   $s2, 8($sp)
+    lw   $s3, 12($sp)
+    lw   $s4, 16($sp)
+    lw   $s5, 20($sp)
+    lw   $s6, 24($sp)
+    lw   $ra, 28($sp)
+    addiu $sp, $sp, 32
     jr   $ra

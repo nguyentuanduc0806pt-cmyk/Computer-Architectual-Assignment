@@ -23,14 +23,14 @@
 
 **Phụ trách triển khai:**
 
-- [ ] `init_board` – Khởi tạo 32 ô có thể chơi trên bàn cờ.
-- [ ] `print_board` – In toàn bộ bàn cờ 8 × 8 bằng cách tái tạo 32 ô có thể chơi và 32 ô không thể chơi.
-- [ ] `square_to_coord` và `coord_to_square` – Chuyển đổi giữa số ô mà người chơi nhập và tọa độ hàng/cột.
-- [ ] Các hàm hỗ trợ tra cứu ô và quân cờ, nếu thiết kế chung cần dùng.
-- [ ] Kiểm tra tính hợp lệ của nước đi thông thường của quân Tốt.
-- [ ] Kiểm tra nước đi của quân Vua, bao gồm cả hướng đi ngược.
-- [ ] `apply_normal_move` – Thực hiện nước đi thông thường và xóa quân khỏi ô xuất phát.
-- [ ] `check_promotion` – Phong cấp quân Tốt khi quân đến hàng phong cấp.
+- [x] `init_board` – Khởi tạo 32 ô có thể chơi trên bàn cờ.
+- [x] `print_board` – In toàn bộ bàn cờ 8 × 8 có khung kẻ ASCII, bản đồ ô 1–32 song song, chú thích và bộ đếm quân.
+- [x] `square_to_coord` và `coord_to_square` – Chuyển đổi giữa số ô mà người chơi nhập và tọa độ hàng/cột.
+- [x] Các hàm hỗ trợ tra cứu ô và quân cờ (`has_normal_move`, `print_normal_moves`).
+- [x] Kiểm tra tính hợp lệ của nước đi thông thường của quân Tốt.
+- [x] Kiểm tra nước đi của quân Vua, bao gồm cả hướng đi ngược.
+- [x] `apply_normal_move` – Thực hiện nước đi thông thường và xóa quân khỏi ô xuất phát.
+- [x] `check_promotion` – Phong cấp quân Tốt khi quân đến hàng phong cấp.
 
 **Sản phẩm bàn giao:** Một module bàn cờ đã được kiểm thử, có thể khởi tạo và hiển thị bàn cờ, chuyển đổi chính xác số ô và tọa độ, đồng thời kiểm tra và thực hiện nước đi thông thường của quân Tốt và quân Vua, bao gồm cả phong cấp.
 
@@ -324,11 +324,11 @@ Cả hai thành viên cần hiểu toàn bộ chương trình. Bài tập đánh
 
 Kế hoạch gốc đã xác định các giao diện chính, nhưng vẫn còn một số chi tiết triển khai cần cả hai cùng quyết định. Hãy ghi lại phương án đã thống nhất ở đây hoặc trong comment của code trước khi tích hợp hai module.
 
-- [ ] **Cấu trúc source cuối cùng:** MARS có thể assemble các module cùng nhau không, hay nhóm sẽ nộp một file `.asm` đã ghép?
-- [ ] **Cách `chain_capture` báo kết thúc:** Thủ tục báo hiệu chuỗi ăn quân đã kết thúc bằng cách nào (ví dụ: giá trị trả về được quy định rõ hoặc một quy ước luồng điều khiển cụ thể)? Mô tả giao diện hiện tại nói thủ tục yêu cầu nhập các nước ăn tiếp theo nhưng chưa quy định giá trị trả về cụ thể.
-- [ ] **Nơi khai báo dữ liệu dùng chung:** File nào chịu trách nhiệm khai báo duy nhất các biến `board`, `current_player`, `start_square`, `destination` và `game_over`? Các module khác nên tham chiếu đến chúng, không khai báo bản sao.
-- [ ] **Kiểm tra dữ liệu nhập:** Thống nhất cách từ chối số ô ngoài phạm vi và dữ liệu người dùng nhập sai định dạng trước khi gọi các thủ tục kiểm tra di chuyển/ăn quân.
-- [ ] **Các luật cụ thể của đề bài:** Kiểm tra lại những luật di chuyển hoặc luật trò chơi chưa được liệt kê trong kế hoạch này bằng đề bài gốc. Không tự giả định một luật nếu đề bài chưa quy định.
+- [x] **Cấu trúc source cuối cùng:** Đặt toàn bộ 7 file `.asm` trực tiếp trong `src/` để MARS 4.5 assemble cùng nhau ổn định bằng tùy chọn *Assemble all files in directory* + *Start at global `main`*.
+- [x] **Cách `chain_capture` báo kết thúc:** Trả về `$v0 = 1` khi chuỗi ăn kết thúc bình thường (không còn nước ăn tiếp), và `$v0 = 0` nếu tham số đầu vào không hợp lệ.
+- [x] **Nơi khai báo dữ liệu dùng chung:** `src/board.asm` là nơi duy nhất khai báo `.globl` cho `board`, `current_player`, `start_square`, `destination`, `game_over`, `player1_color` và `mandatory_capture`.
+- [x] **Kiểm tra dữ liệu nhập:** `main.asm` kiểm tra phạm vi `1..32`, ô trống, đúng quân của người chơi và nước đi hợp lệ ngay khi chọn quân; cho phép nhập `0` ở bước chọn ô đích để chọn lại quân khác.
+- [x] **Các luật bổ sung (Extra tasks):** Đã triển khai chọn màu cho Người chơi 1, bàn cờ ASCII kèm bản đồ 1–32 và đếm quân, chế độ bắt buộc ăn quân (Official vs Casual), gợi ý nước đi hợp lệ cho quân đã chọn, thông báo nước đi theo ký hiệu chuẩn (`21-17`, `17x10`) và phát hiện thắng do đối thủ bị khóa hết nước đi (trapped).
 
 ---
 
@@ -336,25 +336,25 @@ Kế hoạch gốc đã xác định các giao diện chính, nhưng vẫn còn 
 
 ### Quy ước chung
 
-- [ ] Mọi module đều sử dụng cùng một mảng `board` gồm 32 byte và cùng 5 mã quân cờ.
-- [ ] Số ô là `1..32`; chỉ số mảng được tính bằng `square_number - 1`.
-- [ ] Tọa độ bắt đầu từ 0; hàng 0 ở trên cùng và cột 0 ở bên trái.
-- [ ] Hai thành viên đã thống nhất biến dùng chung, quy ước thanh ghi và giá trị trả về.
-- [ ] Thủ tục kiểm tra không thay đổi bàn cờ; thủ tục thực thi chịu trách nhiệm cập nhật bàn cờ.
-- [ ] Kiểm tra phong cấp ngay sau mọi nước đi có thể đưa quân đến hàng phong cấp, bao gồm cả nước ăn quân.
+- [x] Mọi module đều sử dụng cùng một mảng `board` gồm 32 byte và cùng 5 mã quân cờ.
+- [x] Số ô là `1..32`; chỉ số mảng được tính bằng `square_number - 1`.
+- [x] Tọa độ bắt đầu từ 0; hàng 0 ở trên cùng và cột 0 ở bên trái.
+- [x] Hai thành viên đã thống nhất biến dùng chung, quy ước thanh ghi và giá trị trả về.
+- [x] Thủ tục kiểm tra không thay đổi bàn cờ; thủ tục thực thi chịu trách nhiệm cập nhật bàn cờ.
+- [x] Kiểm tra phong cấp ngay sau mọi nước đi có thể đưa quân đến hàng phong cấp, bao gồm cả nước ăn quân.
 
 ### Phần triển khai
 
-- [ ] A đã hoàn thành và kiểm thử bàn cờ, tọa độ, di chuyển thông thường, di chuyển quân Vua và phong cấp.
-- [ ] B đã hoàn thành và kiểm thử ăn quân, ăn liên tiếp, vòng lặp trò chơi, điều khiển lượt và xác định người thắng.
-- [ ] Giao diện và tác động của từng thủ tục đã được ghi chú.
-- [ ] Các module đã được tích hợp sau từng cột mốc.
+- [x] A đã hoàn thành và kiểm thử bàn cờ, tọa độ, di chuyển thông thường, di chuyển quân Vua và phong cấp.
+- [x] B đã hoàn thành và kiểm thử ăn quân, ăn liên tiếp, vòng lặp trò chơi, điều khiển lượt và xác định người thắng (kể cả thắng do khóa nước đi).
+- [x] Giao diện và tác động của từng thủ tục đã được ghi chú.
+- [x] Các module đã được tích hợp đầy đủ và chạy ổn định cùng nhau.
 
 ### Nộp bài và trình diễn
 
-- [ ] Source cuối cùng assemble và chạy được trên cấu hình MARS mà nhóm đã thống nhất.
-- [ ] Các tình huống kiểm thử cần thiết đều đã chạy và cho kết quả đúng.
-- [ ] Test cases và hướng dẫn chạy được đưa vào `tests/` và `README.md` theo thống nhất của nhóm.
+- [x] Source cuối cùng assemble và chạy được trên cấu hình MARS 4.5 mà nhóm đã thống nhất.
+- [x] Tất cả 7 bộ test tự động trong `tests/` và kịch bản chơi thực tế đều cho kết quả đúng.
+- [x] Test cases và hướng dẫn chạy đã được cập nhật vào `tests/` và `README.md`.
 - [ ] Cả hai thành viên đã rà soát toàn bộ chương trình và báo cáo.
 - [ ] Cả hai có thể giải thích toàn bộ chương trình và tham gia trình diễn.
 

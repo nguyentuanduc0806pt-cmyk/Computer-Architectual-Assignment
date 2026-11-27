@@ -30,12 +30,42 @@
 # ============================================================================
 
 .data
-gc_black_turn_msg:  .asciiz "\n=== BLACK's Turn (b / B) ===\n"
-gc_red_turn_msg:    .asciiz "\n=== RED's Turn (r / R) ===\n"
-gc_prompt_start:    .asciiz "Enter starting square (1-32): "
-gc_prompt_dest:     .asciiz "Enter destination square (1-32): "
-gc_black_wins_msg:  .asciiz "\n==============================\n   GAME OVER: BLACK WINS!\n==============================\n"
-gc_red_wins_msg:    .asciiz "\n==============================\n   GAME OVER: RED WINS!\n==============================\n"
+gc_choose_prompt:     .asciiz "\nPlayer 1, choose your side:\n  1. Black (b / B) - moves first\n  2. Red   (r / R) - moves second\nEnter choice (1 or 2): "
+gc_choose_invalid:    .asciiz "Invalid choice! Please enter 1 for Black or 2 for Red.\n"
+gc_p1_is_black_msg:   .asciiz "Player 1 is BLACK (b/B). Player 2 is RED (r/R). Black moves first!\n"
+gc_p1_is_red_msg:     .asciiz "Player 1 is RED (r/R). Player 2 is BLACK (b/B). Black moves first!\n"
+
+gc_p1_black_turn_msg: .asciiz "\n=== Player 1's Turn: BLACK (b / B) ===\n"
+gc_p2_black_turn_msg: .asciiz "\n=== Player 2's Turn: BLACK (b / B) ===\n"
+gc_p1_red_turn_msg:   .asciiz "\n=== Player 1's Turn: RED (r / R) ===\n"
+gc_p2_red_turn_msg:   .asciiz "\n=== Player 2's Turn: RED (r / R) ===\n"
+
+gc_prompt_start:      .asciiz "Enter starting square (1-32): "
+gc_prompt_dest:       .asciiz "Enter destination square (1-32): "
+
+gc_p1_black_wins_msg: .asciiz "\n==========================================\n   GAME OVER: PLAYER 1 (BLACK) WINS!\n==========================================\n"
+gc_p2_black_wins_msg: .asciiz "\n==========================================\n   GAME OVER: PLAYER 2 (BLACK) WINS!\n==========================================\n"
+gc_p1_red_wins_msg:   .asciiz "\n==========================================\n   GAME OVER: PLAYER 1 (RED) WINS!\n==========================================\n"
+gc_p2_red_wins_msg:   .asciiz "\n==========================================\n   GAME OVER: PLAYER 2 (RED) WINS!\n==========================================\n"
+
+gc_mode_prompt:       .asciiz "\nSelect ruleset:\n  1. Official English Checkers (Mandatory initial capture)\n  2. Casual Mode (Initial capture optional; chain capture still mandatory)\nEnter choice (1 or 2): "
+gc_mode_invalid:      .asciiz "Invalid choice! Please enter 1 or 2.\n"
+gc_mode_official_msg: .asciiz "Mode: Official English Checkers (Mandatory Capture ON).\n"
+gc_mode_casual_msg:   .asciiz "Mode: Casual Checkers (Mandatory Initial Capture OFF).\n"
+
+gc_prompt_dest_opt:   .asciiz "Enter destination square (1-32, or 0 to pick another piece): "
+
+gc_piece_red_pawn:    .asciiz "Red pawn"
+gc_piece_red_king:    .asciiz "Red King"
+gc_piece_black_pawn:  .asciiz "Black pawn"
+gc_piece_black_king:  .asciiz "Black King"
+
+gc_move_fb_pre:       .asciiz "Move played: "
+gc_promo_red_pre:     .asciiz "Promoted to Red King at square "
+gc_promo_black_pre:   .asciiz "Promoted to Black King at square "
+gc_promo_post:        .asciiz "!\n"
+gc_win_elim_msg:      .asciiz "\nAll opponent pieces have been captured!\n"
+gc_win_trap_msg:      .asciiz "\nOpponent has no legal moves remaining (trapped)!\n"
 
 .text
 .globl check_winner
@@ -146,22 +176,83 @@ cw_no_pieces:
     jr $ra
 
 # ============================================================================
+# CHOOSE PLAYER COLOR
+# Prompts Player 1 to pick Black (1) or Red (2) and stores their color code
+# (3 = Black, 1 = Red) into shared global player1_color.
+# Black still moves first per English Checkers rules.
+# ============================================================================
+.globl choose_player_color
+choose_player_color:
+gc_choose_loop:
+    li   $v0, 4
+    la   $a0, gc_choose_prompt
+    syscall
+
+    li   $v0, 5                  # Read integer choice (1 or 2)
+    syscall
+
+    li   $t0, 1
+    beq  $v0, $t0, gc_pick_black
+
+    li   $t0, 2
+    beq  $v0, $t0, gc_pick_red
+
+    li   $v0, 4
+    la   $a0, gc_choose_invalid
+    syscall
+    j    gc_choose_loop
+
+gc_pick_black:
+    la   $t0, player1_color
+    li   $t1, 3                  # Player 1 = Black (3), Player 2 = Red (1)
+    sw   $t1, 0($t0)
+
+    li   $v0, 4
+    la   $a0, gc_p1_is_black_msg
+    syscall
+    jr   $ra
+
+gc_pick_red:
+    la   $t0, player1_color
+    li   $t1, 1                  # Player 1 = Red (1), Player 2 = Black (3)
+    sw   $t1, 0($t0)
+
+    li   $v0, 4
+    la   $a0, gc_p1_is_red_msg
+    syscall
+    jr   $ra
+
+# ============================================================================
 # PRINT TURN BANNER
-# Reads global current_player and prints whose turn it is.
+# Reads globals current_player and player1_color and prints whose turn it is.
 # ============================================================================
 .globl print_turn_banner
 print_turn_banner:
     la   $t0, current_player     # $t0 = address of shared global current_player
-    lw   $t1, 0($t0)             # $t1 = value (3 = Black, 1 = Red)
+    lw   $t1, 0($t0)             # $t1 = active color (3 = Black, 1 = Red)
 
-    li   $t2, 3                  # $t2 = 3 (Black player code)
-    beq  $t1, $t2, gc_print_black
+    la   $t0, player1_color
+    lw   $t2, 0($t0)             # $t2 = Player 1's color (3 or 1)
 
-    la   $a0, gc_red_turn_msg    # Otherwise, it's Red's turn
+    li   $t3, 3                  # Check if active color is Black (3)
+    beq  $t1, $t3, gc_print_black
+
+    # Active color is Red (1)
+    beq  $t1, $t2, gc_print_p1_red
+    la   $a0, gc_p2_red_turn_msg
+    j    gc_print_turn_out
+
+gc_print_p1_red:
+    la   $a0, gc_p1_red_turn_msg
     j    gc_print_turn_out
 
 gc_print_black:
-    la   $a0, gc_black_turn_msg  # Load Black's turn banner string
+    beq  $t1, $t2, gc_print_p1_black
+    la   $a0, gc_p2_black_turn_msg
+    j    gc_print_turn_out
+
+gc_print_p1_black:
+    la   $a0, gc_p1_black_turn_msg
 
 gc_print_turn_out:
     li   $v0, 4                  # Syscall 4 = print_string
@@ -229,8 +320,9 @@ gc_store_player:
 
 # ============================================================================
 # ANNOUNCE WINNER
-# Input:  $a0 = winning player (1 = Red, 3 = Black)
-# Effect: Sets global game_over = 1 and prints the winner announcement.
+# Input:  $a0 = winning color (1 = Red, 3 = Black)
+# Effect: Sets global game_over = 1 and prints the winner announcement
+#         including Player 1 / Player 2 identity from player1_color.
 # ============================================================================
 .globl announce_winner
 announce_winner:
@@ -239,17 +331,213 @@ announce_winner:
     li   $t1, 1
     sw   $t1, 0($t0)
 
-    # 2. Pick the matching winner message
+    # 2. Load Player 1's color and pick the matching winner message
+    la   $t0, player1_color
+    lw   $t1, 0($t0)             # $t1 = Player 1's color (1 or 3)
+
     li   $t2, 3
     beq  $a0, $t2, gc_black_won
 
-    la   $a0, gc_red_wins_msg    # Winner is Red (1)
+    # Winner is Red (1)
+    beq  $a0, $t1, gc_p1_red_won
+    la   $a0, gc_p2_red_wins_msg
+    j    gc_print_winner
+
+gc_p1_red_won:
+    la   $a0, gc_p1_red_wins_msg
     j    gc_print_winner
 
 gc_black_won:
-    la   $a0, gc_black_wins_msg  # Winner is Black (3)
+    beq  $a0, $t1, gc_p1_black_won
+    la   $a0, gc_p2_black_wins_msg
+    j    gc_print_winner
+
+gc_p1_black_won:
+    la   $a0, gc_p1_black_wins_msg
 
 gc_print_winner:
     li   $v0, 4                  # Syscall 4: print_string
+    syscall
+    jr   $ra
+
+# ============================================================================
+# CHOOSE GAME MODE
+# Prompts user to select Official English Checkers (mandatory initial capture)
+# or Casual Mode, storing 1 or 0 in shared global mandatory_capture.
+# ============================================================================
+.globl choose_game_mode
+choose_game_mode:
+gc_mode_loop:
+    li   $v0, 4
+    la   $a0, gc_mode_prompt
+    syscall
+
+    li   $v0, 5
+    syscall
+
+    li   $t0, 1
+    beq  $v0, $t0, gc_mode_set_official
+
+    li   $t0, 2
+    beq  $v0, $t0, gc_mode_set_casual
+
+    li   $v0, 4
+    la   $a0, gc_mode_invalid
+    syscall
+    j    gc_mode_loop
+
+gc_mode_set_official:
+    la   $t0, mandatory_capture
+    li   $t1, 1
+    sw   $t1, 0($t0)
+    li   $v0, 4
+    la   $a0, gc_mode_official_msg
+    syscall
+    jr   $ra
+
+gc_mode_set_casual:
+    la   $t0, mandatory_capture
+    sw   $zero, 0($t0)
+    li   $v0, 4
+    la   $a0, gc_mode_casual_msg
+    syscall
+    jr   $ra
+
+# ============================================================================
+# READ START SQUARE / READ DEST SQUARE
+# Two-step input helpers so the player sees legal moves after selecting a piece.
+# ============================================================================
+.globl read_start_square
+read_start_square:
+    li   $v0, 4
+    la   $a0, gc_prompt_start
+    syscall
+
+    li   $v0, 5
+    syscall
+
+    la   $t0, start_square
+    sw   $v0, 0($t0)
+    jr   $ra
+
+.globl read_dest_square
+read_dest_square:
+    li   $v0, 4
+    la   $a0, gc_prompt_dest_opt
+    syscall
+
+    li   $v0, 5
+    syscall
+
+    la   $t0, destination
+    sw   $v0, 0($t0)
+    jr   $ra
+
+# ============================================================================
+# PRINT PIECE NAME
+# Input: $a0 = piece code (1=Red pawn, 2=Red King, 3=Black pawn, 4=Black King)
+# ============================================================================
+.globl print_piece_name
+print_piece_name:
+    li   $t0, 1
+    beq  $a0, $t0, gc_pn_red_pawn
+    li   $t0, 2
+    beq  $a0, $t0, gc_pn_red_king
+    li   $t0, 3
+    beq  $a0, $t0, gc_pn_black_pawn
+    la   $a0, gc_piece_black_king
+    j    gc_pn_out
+
+gc_pn_red_pawn:
+    la   $a0, gc_piece_red_pawn
+    j    gc_pn_out
+
+gc_pn_red_king:
+    la   $a0, gc_piece_red_king
+    j    gc_pn_out
+
+gc_pn_black_pawn:
+    la   $a0, gc_piece_black_pawn
+
+gc_pn_out:
+    li   $v0, 4
+    syscall
+    jr   $ra
+
+# ============================================================================
+# PRINT MOVE FEEDBACK
+# Prints standard checkers normal-move notation: "Move played: <start>-<dest>\n"
+# Input: $a0 = start square, $a1 = destination square
+# ============================================================================
+.globl print_move_feedback
+print_move_feedback:
+    move $t0, $a0
+    move $t1, $a1
+
+    li   $v0, 4
+    la   $a0, gc_move_fb_pre
+    syscall
+
+    move $a0, $t0
+    li   $v0, 1
+    syscall
+
+    li   $a0, 45                 # '-'
+    li   $v0, 11
+    syscall
+
+    move $a0, $t1
+    li   $v0, 1
+    syscall
+
+    li   $a0, 10                 # '\n'
+    li   $v0, 11
+    syscall
+    jr   $ra
+
+# ============================================================================
+# PRINT PROMOTION FEEDBACK
+# Input: $a0 = square, $a1 = promoted piece code (2 = Red King, 4 = Black King)
+# ============================================================================
+.globl print_promotion_feedback
+print_promotion_feedback:
+    move $t0, $a0
+
+    li   $t1, 2
+    beq  $a1, $t1, gc_pf_red
+    la   $a0, gc_promo_black_pre
+    j    gc_pf_print
+
+gc_pf_red:
+    la   $a0, gc_promo_red_pre
+
+gc_pf_print:
+    li   $v0, 4
+    syscall
+
+    move $a0, $t0
+    li   $v0, 1
+    syscall
+
+    li   $v0, 4
+    la   $a0, gc_promo_post
+    syscall
+    jr   $ra
+
+# ============================================================================
+# PRINT WIN REASON
+# Input: $a0 = 0 (all opponent pieces eliminated) or 1 (opponent trapped)
+# ============================================================================
+.globl print_win_reason
+print_win_reason:
+    beq  $a0, $zero, gc_wr_elim
+    la   $a0, gc_win_trap_msg
+    j    gc_wr_out
+
+gc_wr_elim:
+    la   $a0, gc_win_elim_msg
+
+gc_wr_out:
+    li   $v0, 4
     syscall
     jr   $ra

@@ -1,6 +1,6 @@
 # Tài liệu giải thích module `coordinates.asm`
 
-File nguồn: [coordinates.asm](file:///d:/Computer%20Architectual%20Assignment/src/coordinates.asm)  
+File nguồn: [coordinates.asm](./coordinates.asm)  
 Phụ trách: Thành viên A
 
 ---

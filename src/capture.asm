@@ -7,6 +7,13 @@
 # ============================================================================
 .data
 
+.align 2
+cap_dr: .word -2, -2,  2,  2
+cap_dc: .word -2,  2, -2,  2
+
+chain_avail_msg:
+    .asciiz "Available chain landing squares: "
+
 chain_prompt_msg:
     .asciiz "Chaining possible. Enter landing square: "
 
@@ -16,10 +23,24 @@ chain_invalid_msg:
 chain_finished_msg:
     .asciiz "No further capture available. Chain complete.\n"
 
+cap_fb_red_msg:
+    .asciiz "Captured Red's piece! ("
+
+cap_fb_black_msg:
+    .asciiz "Captured Black's piece! ("
+
+cap_fb_close_msg:
+    .asciiz ")\n"
+
+chain_promo_pre_msg:
+    .asciiz "Promoted to King at square "
+
+chain_promo_post_msg:
+    .asciiz "!\n"
+
 .text
 .globl validate_capture
 validate_capture:
-    # TODO (Member B): $a0=start, $a1=destination, $a2=current player.
 
 # ============================================================================
 # CAPTURE VALIDATION
@@ -831,12 +852,13 @@ chain_capture:
     # 1. Save registers
     # ------------------------------------------------
 
-    addiu $sp, $sp, -16
+    addiu $sp, $sp, -24
 
     sw $s0, 0($sp)
     sw $s1, 4($sp)
     sw $s2, 8($sp)
-    sw $ra, 12($sp)
+    sw $s3, 12($sp)
+    sw $ra, 16($sp)
 
     move $s0, $a0       # Current square
 
@@ -878,6 +900,23 @@ chain_check_next:
 
     beq $v0, $zero, chain_finished
 
+    # Show updated board so player can see where their piece is before chaining
+
+    jal print_board
+
+    # Show all available landing squares for the chain jump
+
+    li   $v0, 4
+    la   $a0, chain_avail_msg
+    syscall
+
+    move $a0, $s0
+    move $a1, $s1
+    jal  print_capture_moves
+
+    li   $a0, 10        # '\n'
+    li   $v0, 11
+    syscall
 
     # ------------------------------------------------
     # 5. Ask player for another landing square
@@ -912,6 +951,12 @@ chain_request_input:
 
     beq $v0, $zero, chain_invalid_input
 
+    # Print standard checkers capture feedback (e.g. 14x7)
+
+    move $a0, $s0
+    move $a1, $s2
+    move $a2, $s1
+    jal  print_capture_feedback
 
     # ------------------------------------------------
     # 7. Update current square
@@ -926,10 +971,30 @@ chain_request_input:
     # This must happen before checking another capture.
     # ------------------------------------------------
 
+    la   $t0, board
+    addiu $t1, $s0, -1
+    addu $t0, $t0, $t1
+    lbu  $s3, 0($t0)    # Piece code before promotion check
+
     move $a0, $s0
+    jal  check_promotion
 
-    jal check_promotion
+    la   $t0, board
+    addiu $t1, $s0, -1
+    addu $t0, $t0, $t1
+    lbu  $t2, 0($t0)    # Piece code after promotion check
+    beq  $t2, $s3, chain_check_next
 
+    # Piece was promoted mid-chain!
+    li   $v0, 4
+    la   $a0, chain_promo_pre_msg
+    syscall
+    move $a0, $s0
+    li   $v0, 1
+    syscall
+    li   $v0, 4
+    la   $a0, chain_promo_post_msg
+    syscall
 
     # ------------------------------------------------
     # 9. Check for another capture
@@ -987,8 +1052,341 @@ chain_done:
     lw $s0, 0($sp)
     lw $s1, 4($sp)
     lw $s2, 8($sp)
-    lw $ra, 12($sp)
+    lw $s3, 12($sp)
+    lw $ra, 16($sp)
 
-    addiu $sp, $sp, 16
+    addiu $sp, $sp, 24
 
     jr $ra
+
+
+# ============================================================================
+# HAS CAPTURE FROM
+# Checks whether the piece at square $a0 belonging to explicit player $a1 has
+# at least one legal capture (does NOT depend on global current_player).
+# Read-only: does NOT modify board.
+#
+# Input:  $a0 = square (1..32), $a1 = player (1 = Red, 3 = Black)
+# Output: $v0 = 1 if a capture exists from $a0, 0 otherwise
+# ============================================================================
+.globl has_capture_from
+has_capture_from:
+    addiu $sp, $sp, -24
+    sw   $s0, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $s2, 8($sp)
+    sw   $s3, 12($sp)
+    sw   $s4, 16($sp)
+    sw   $ra, 20($sp)
+
+    move $s0, $a0               # $s0 = square
+    move $s1, $a1               # $s1 = player
+
+    slti $t0, $s0, 1
+    bne  $t0, $zero, hcf_none
+    slti $t0, $s0, 33
+    beq  $t0, $zero, hcf_none
+
+    # Fast ownership check on board[square - 1]
+    la   $t0, board
+    addiu $t1, $s0, -1
+    addu $t0, $t0, $t1
+    lbu  $t2, 0($t0)
+
+    li   $t3, 1
+    beq  $s1, $t3, hcf_check_red
+    li   $t3, 3
+    beq  $s1, $t3, hcf_check_black
+    j    hcf_none
+
+hcf_check_red:
+    li   $t3, 1
+    beq  $t2, $t3, hcf_owned
+    li   $t3, 2
+    beq  $t2, $t3, hcf_owned
+    j    hcf_none
+
+hcf_check_black:
+    li   $t3, 3
+    beq  $t2, $t3, hcf_owned
+    li   $t3, 4
+    beq  $t2, $t3, hcf_owned
+    j    hcf_none
+
+hcf_owned:
+    move $a0, $s0
+    jal  square_to_coord
+    move $s2, $v0               # $s2 = row
+    move $s3, $v1               # $s3 = col
+
+    li   $s4, 0                 # direction index (0..3)
+
+hcf_loop:
+    slti $t0, $s4, 4
+    beq  $t0, $zero, hcf_none
+
+    sll  $t1, $s4, 2
+    la   $t2, cap_dr
+    addu $t2, $t2, $t1
+    lw   $t3, 0($t2)
+    la   $t2, cap_dc
+    addu $t2, $t2, $t1
+    lw   $t4, 0($t2)
+
+    addu $a0, $s2, $t3
+    addu $a1, $s3, $t4
+    jal  coord_to_square
+    bltz $v0, hcf_next
+
+    move $a0, $s0
+    move $a1, $v0
+    move $a2, $s1
+    jal  validate_capture
+    bne  $v0, $zero, hcf_found
+
+hcf_next:
+    addiu $s4, $s4, 1
+    j    hcf_loop
+
+hcf_found:
+    li   $v0, 1
+    j    hcf_done
+
+hcf_none:
+    li   $v0, 0
+
+hcf_done:
+    lw   $s0, 0($sp)
+    lw   $s1, 4($sp)
+    lw   $s2, 8($sp)
+    lw   $s3, 12($sp)
+    lw   $s4, 16($sp)
+    lw   $ra, 20($sp)
+    addiu $sp, $sp, 24
+    jr   $ra
+
+
+# ============================================================================
+# HAS ANY CAPTURE
+# Scans all 32 playable squares to determine whether player $a0 has at least
+# one legal capture anywhere on the board (for mandatory capture & trap checks).
+#
+# Input:  $a0 = player (1 = Red, 3 = Black)
+# Output: $v0 = 1 if any piece of $a0 can capture, 0 otherwise
+# ============================================================================
+.globl has_any_capture
+has_any_capture:
+    addiu $sp, $sp, -16
+    sw   $s0, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $ra, 8($sp)
+
+    move $s0, $a0               # $s0 = player
+    li   $s1, 1                 # $s1 = square (1..32)
+
+hac_loop:
+    slti $t0, $s1, 33
+    beq  $t0, $zero, hac_none
+
+    move $a0, $s1
+    move $a1, $s0
+    jal  has_capture_from
+    bne  $v0, $zero, hac_found
+
+    addiu $s1, $s1, 1
+    j    hac_loop
+
+hac_found:
+    li   $v0, 1
+    j    hac_done
+
+hac_none:
+    li   $v0, 0
+
+hac_done:
+    lw   $s0, 0($sp)
+    lw   $s1, 4($sp)
+    lw   $ra, 8($sp)
+    addiu $sp, $sp, 16
+    jr   $ra
+
+
+# ============================================================================
+# PRINT CAPTURE MOVES
+# Prints all legal capture landing squares from square $a0 for player $a1
+# (space-separated, ascending order). Read-only.
+#
+# Input:  $a0 = square (1..32), $a1 = player (1 = Red, 3 = Black)
+# Output: $v0 = count of capture destinations printed
+# ============================================================================
+.globl print_capture_moves
+print_capture_moves:
+    addiu $sp, $sp, -32
+    sw   $s0, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $s2, 8($sp)
+    sw   $s3, 12($sp)
+    sw   $s4, 16($sp)
+    sw   $s5, 20($sp)
+    sw   $s6, 24($sp)
+    sw   $ra, 28($sp)
+
+    move $s0, $a0               # $s0 = square
+    move $s1, $a1               # $s1 = player
+    li   $s5, 0                 # $s5 = count printed
+
+    move $a0, $s0
+    jal  square_to_coord
+    bltz $v0, pcm_done
+    move $s2, $v0               # $s2 = row
+    move $s3, $v1               # $s3 = col
+
+    li   $s4, 0                 # direction index (0..3)
+
+pcm_loop:
+    slti $t0, $s4, 4
+    beq  $t0, $zero, pcm_done
+
+    sll  $t1, $s4, 2
+    la   $t2, cap_dr
+    addu $t2, $t2, $t1
+    lw   $t3, 0($t2)
+    la   $t2, cap_dc
+    addu $t2, $t2, $t1
+    lw   $t4, 0($t2)
+
+    addu $a0, $s2, $t3
+    addu $a1, $s3, $t4
+    jal  coord_to_square
+    bltz $v0, pcm_next
+
+    move $s6, $v0               # candidate landing square
+    move $a0, $s0
+    move $a1, $s6
+    move $a2, $s1
+    jal  validate_capture
+    beq  $v0, $zero, pcm_next
+
+    beq  $s5, $zero, pcm_print_num
+    li   $a0, 32                # ' '
+    li   $v0, 11
+    syscall
+
+pcm_print_num:
+    move $a0, $s6
+    li   $v0, 1
+    syscall
+    addiu $s5, $s5, 1
+
+pcm_next:
+    addiu $s4, $s4, 1
+    j    pcm_loop
+
+pcm_done:
+    move $v0, $s5
+    lw   $s0, 0($sp)
+    lw   $s1, 4($sp)
+    lw   $s2, 8($sp)
+    lw   $s3, 12($sp)
+    lw   $s4, 16($sp)
+    lw   $s5, 20($sp)
+    lw   $s6, 24($sp)
+    lw   $ra, 28($sp)
+    addiu $sp, $sp, 32
+    jr   $ra
+
+
+# ============================================================================
+# PRINT MANDATORY CAPTURE PIECES
+# Prints all starting squares (1..32) of player $a0 that have a legal capture.
+#
+# Input:  $a0 = player (1 = Red, 3 = Black)
+# Output: $v0 = count of pieces that can capture
+# ============================================================================
+.globl print_mandatory_capture_pieces
+print_mandatory_capture_pieces:
+    addiu $sp, $sp, -16
+    sw   $s0, 0($sp)
+    sw   $s1, 4($sp)
+    sw   $s2, 8($sp)
+    sw   $ra, 12($sp)
+
+    move $s0, $a0               # $s0 = player
+    li   $s1, 1                 # $s1 = square (1..32)
+    li   $s2, 0                 # $s2 = count printed
+
+pmp_loop:
+    slti $t0, $s1, 33
+    beq  $t0, $zero, pmp_done
+
+    move $a0, $s1
+    move $a1, $s0
+    jal  has_capture_from
+    beq  $v0, $zero, pmp_next
+
+    beq  $s2, $zero, pmp_print_sq
+    li   $a0, 32                # ' '
+    li   $v0, 11
+    syscall
+
+pmp_print_sq:
+    move $a0, $s1
+    li   $v0, 1
+    syscall
+    addiu $s2, $s2, 1
+
+pmp_next:
+    addiu $s1, $s1, 1
+    j    pmp_loop
+
+pmp_done:
+    move $v0, $s2
+    lw   $s0, 0($sp)
+    lw   $s1, 4($sp)
+    lw   $s2, 8($sp)
+    lw   $ra, 12($sp)
+    addiu $sp, $sp, 16
+    jr   $ra
+
+
+# ============================================================================
+# PRINT CAPTURE FEEDBACK
+# Prints standard checkers capture notation:
+#   "Captured Red's piece! (21x14)\n"  or  "Captured Black's piece! (14x23)\n"
+#
+# Input: $a0 = start square, $a1 = dest square, $a2 = capturing player (1 or 3)
+# ============================================================================
+.globl print_capture_feedback
+print_capture_feedback:
+    move $t0, $a0               # $t0 = start
+    move $t1, $a1               # $t1 = dest
+
+    li   $t2, 3
+    beq  $a2, $t2, pcf_cap_red
+
+    la   $a0, cap_fb_black_msg  # Red captured Black's piece
+    j    pcf_print_pre
+
+pcf_cap_red:
+    la   $a0, cap_fb_red_msg    # Black captured Red's piece
+
+pcf_print_pre:
+    li   $v0, 4
+    syscall
+
+    move $a0, $t0               # start square
+    li   $v0, 1
+    syscall
+
+    li   $a0, 120               # 'x'
+    li   $v0, 11
+    syscall
+
+    move $a0, $t1               # destination square
+    li   $v0, 1
+    syscall
+
+    la   $a0, cap_fb_close_msg  # ")\n"
+    li   $v0, 4
+    syscall
+    jr   $ra

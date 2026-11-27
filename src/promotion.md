@@ -1,6 +1,6 @@
 # Tài liệu giải thích module `promotion.asm`
 
-File nguồn: [promotion.asm](file:///d:/Computer%20Architectual%20Assignment/src/promotion.asm)  
+File nguồn: [promotion.asm](./promotion.asm)  
 Phụ trách: Thành viên A
 
 ---
