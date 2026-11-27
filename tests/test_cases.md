@@ -4,30 +4,24 @@
 
 | # | Scenario | Expected result |
 |---:|---|---|
-| 1 | Start a new game | 12 Red pawns, 12 Black pawns, 8 empty playable squares; Black moves first |
-| 2 | Print the board | Boxed 8×8 grid with coordinates, side-by-side `1–32` reference map, legend, and live piece counts |
-| 3 | Valid normal move by each side | Piece moves one diagonal step forward; prints `Move played: <start>-<dest>` |
-| 4 | Starting square is empty or out of `1–32` | Clear error message; re-prompts without touching the board |
-| 5 | Starting square belongs to the opponent | Clear error message; re-prompts without touching the board |
-| 6 | Destination is occupied or illegal | Clear error message; re-prompts destination (or enter `0` to pick another piece); board unchanged |
-| 7 | Pawn moves in the wrong direction | Move rejected; board remains unchanged |
-| 8 | Valid capture | Mover jumps opponent, captured piece is removed, prints `Captured <Side>'s piece! (<start>x<dest>)` |
-| 9 | Invalid capture | Rejected; all 32 board bytes remain unchanged |
-| 10 | King moves and captures backwards | Legal backward diagonal steps and jumps are allowed |
-| 11 | Multi-jump chain capture | Board refreshes, available landing squares are listed, same piece keeps jumping until no capture remains |
-| 12 | Pawn reaches final row during a capture | Promoted immediately with promotion notice; new King can keep chaining backwards on the same turn |
-| 13 | Opponent has no remaining pieces | Prints elimination reason, final board, winner banner (with Player 1/2 + color), and exits |
-| 14 | Player 1 chooses Red or Black | Player 1 picks side at startup; Black still moves first; turn & win banners show the right Player 1/2 label |
-| 15 | Mandatory initial capture (Official mode) | When any piece can capture, lists capturing pieces and blocks non-capturing pieces/moves |
-| 16 | Optional initial capture (Casual mode) | Allows normal moves even when a capture exists, while still enforcing follow-up chain captures |
-| 17 | Selected-piece legal moves & reselect (`0`) | Selecting a piece shows its type and legal move/capture squares; blocked pieces are rejected right away; entering `0` returns to piece selection |
-| 18 | Opponent trapped with 0 legal moves (Figure 9) | Even with pieces still on the board, detects 0 normal moves and 0 captures, announces trap win, and exits |
+| 1 | Start a new game (American 8×8) | 12 Red pawns, 12 Black pawns, 8 empty playable squares; Black moves first |
+| 2 | Start a new game (International 10×10) | 20 Red pawns (`1–20`), 10 empty (`21–30`), 20 Black pawns (`31–50`); Black moves first |
+| 3 | Automatic 180° board rotation | Black's turn shows rows `0..7`/`0..9` (Black at bottom); Red's turn rotates 180° to rows `7..0`/`9..0` (Red at bottom) including the side-by-side square-number map |
+| 4 | Valid normal move by each side | Piece moves one diagonal step forward (or any unobstructed diagonal distance for International Flying Kings); prints `Move played: <start>-<dest>` |
+| 5 | Invalid start / destination input | Out-of-range (`1–32` or `1–50`), empty, opponent piece, or illegal destination re-prompts cleanly without mutating `board`; entering `0` at destination reselects piece |
+| 6 | Multi-jump capture & path previews | Selecting a capturing piece lists all legal 1st-hop landing squares *and* full capture paths (e.g. `21x14x5`, `21x14x7`), stepping through each hop with refreshed board & hints |
+| 7 | American promotion during capture | Reaching the king-row promotes the pawn to King and **ends the turn immediately** (per `american_checkers.pdf`) |
+| 8 | International backward pawn capture | Men can jump opponent pieces both forward and backward |
+| 9 | International Flying King capture | Flying King can jump an opponent at any distance and land on **any** empty square beyond along that diagonal; all legal landing squares are listed |
+| 10 | International Maximum Capture rule | When multiple capture sequences exist, only pieces and landing squares achieving the maximum capture count are listed and accepted |
+| 11 | International deferred removal & promotion | Jumped pieces stay marked (`x`) until the chain ends (cannot be jumped twice); pawns promote only if they end their turn on the king-row |
+| 12 | Win detection (elimination & trap) | Detects both 0 remaining opponent pieces and 0 legal moves (Figure 9 trap win), announces Player 1/2 winner, and exits |
 
-## Rule-scope note
+## Rulesets Available at Startup
 
-The game supports both rulesets at startup:
-- **Official English Checkers (Option 1):** enforces mandatory initial capture *and* mandatory chain captures.
-- **Casual Mode (Option 2):** matches the assignment's bare-minimum rule (initial capture optional, follow-up chain capture mandatory).
+1. **American / English Checkers (8×8, Official):** Mandatory initial & chain captures, forward-only pawn captures, promotion ends turn.
+2. **International Checkers (10×10):** 50 squares, 20 pieces/side, backward pawn captures, Flying Kings, deferred removal, maximum capture rule, end-of-turn promotion.
+3. **American / English Casual (8×8):** Optional initial capture, mandatory follow-up chain captures.
 
 ## Automated Unit Test Harnesses (`tests/`)
 
@@ -42,8 +36,9 @@ Run each file individually in MARS 4.5 (with *Assemble all files in directory* *
 | [test_check_winner.asm](./test_check_winner.asm) | `check_winner` (`W1–W5`) | Non-interactive |
 | [test_chain_capture.asm](./test_chain_capture.asm) | `chain_capture` follow-up jump (`14 → 7`) + board refresh & hints | Interactive (enter `7`) |
 | [test_tier1_features.asm](./test_tier1_features.asm) | `check_promotion`, `has_normal_move`, `print_normal_moves`, `has_any_capture`, `print_capture_moves`, `print_mandatory_capture_pieces`, Figure 9 trap detection, immutability (`T1–T6`) | Non-interactive |
+| [test_new_features.asm](./test_new_features.asm) | 10×10 coords (`N1`), 10×10 init & 180° rotation (`N2`), International backward pawn capture (`N3`), Flying King normal (`N4`) & multi-landing capture (`N5`), Maximum Capture rule (`N6`), American promotion-ends-turn (`N7`), multi-jump path preview & immutability (`N8`) | Non-interactive |
 
 ## Test discipline
 
-- For every invalid move or query helper, verify that all 32 bytes of `board` stay unchanged.
-- Re-run all 7 harnesses plus an end-to-end game in `src/main.asm` after any shared-interface change.
+- For every invalid move or query helper, verify that `board` and `captured_mask` stay unchanged.
+- Re-run all 8 harnesses plus assemble `src/main.asm` after any shared-interface change.

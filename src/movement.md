@@ -6,41 +6,34 @@ Phụ trách: Thành viên A
 ---
 
 ## 1. Thủ tục `validate_normal_move`
-* **Mục đích:** Kiểm tra nước đi thường 1 bước chéo từ `start` (`$a0`) đến `destination` (`$a1`) có hợp lệ cho `current_player` (`$a2`) hay không. **Chỉ đọc, không sửa `board`.**
+* **Mục đích:** Kiểm tra nước đi thường từ `start` (`$a0`) đến `destination` (`$a1`) có hợp lệ cho `current_player` (`$a2`) theo `ruleset` hiện tại hay không. **Chỉ đọc, không sửa `board`.**
 * **Giá trị trả về:** `$v0 = 1` nếu hợp lệ, `0` nếu không hợp lệ.
 * **Các bước kiểm tra:**
-  1. Cả `start` và `destination` phải nằm trong `1..32`.
-  2. Đọc `board[start - 1]`, kiểm tra quân ở ô xuất phát đúng thuộc về `current_player` (`1/2` cho Đỏ, `3/4` cho Đen).
-  3. Ô đích `board[destination - 1]` phải đang trống (`0`).
-  4. Dùng `square_to_coord` đổi hai ô sang `(r1, c1)` và `(r2, c2)`, tính `d_row = r2 - r1`, `d_col = c2 - c1`.
-  5. Kiểm tra `|d_col| == 1`.
-  6. Kiểm tra hướng `d_row`:
-     * Tốt Đỏ (`1`): chỉ đi xuống (`d_row == +1`).
-     * Tốt Đen (`3`): chỉ đi lên (`d_row == -1`).
-     * Vua (`2` hoặc `4`): đi được cả hai hướng (`|d_row| == 1`).
-* **Stack:** Cấp `24` byte lưu `$s0–$s4` và `$ra`.
+  1. Cả `start` và `destination` nằm trong `1..num_squares` (`32` hoặc `50`) và `start != destination`.
+  2. Quân tại `board[start - 1]` thuộc về `current_player`; `board[destination - 1] == 0`.
+  3. Đổi sang `(r1, c1)` và `(r2, c2)`, tính `dr = r2 - r1`, `dc = c2 - c1`.
+  4. **Quân Tốt (cả 2 luật) và Vua luật Anh-Mỹ (`ruleset == 0`):**
+     * `|dc| == 1`; Tốt Đỏ `dr == +1`, Tốt Đen `dr == -1`, Vua Anh-Mỹ `|dr| == 1`.
+  5. **Vua bay luật Quốc tế (`ruleset == 1`, `piece == 2` hoặc `4`):**
+     * Yêu cầu `|dr| == |dc|` và `|dr| >= 1`.
+     * Duyệt từng ô trung gian dọc theo tia chéo `(sr, sc)` từ `(r1 + sr, c1 + sc)` đến `(r2 - sr, c2 - sc)` — mọi ô trung gian phải trống (`0`).
+* **Stack:** Cấp `36` byte lưu `$s0–$s7` và `$ra`.
 
 ---
 
 ## 2. Thủ tục `apply_normal_move`
-* **Mục đích:** Di chuyển quân từ `start` (`$a0`) sang `destination` (`$a1`) sau khi đã kiểm tra hợp lệ.
-* **Cách làm:** Chặn an toàn `1..32`, đọc mã quân ở `board[start - 1]`, ghi sang `board[destination - 1]` rồi xóa ô cũ bằng `sb $zero`.
-* **Thanh ghi:** Thủ tục lá (`$t0–$t3`), không cần stack.
+* **Mục đích:** Di chuyển quân từ `start` (`$a0`) sang `destination` (`$a1`) trong phạm vi `1..num_squares` rồi xóa ô cũ.
+* **Thanh ghi:** Thủ tục lá (`$t0–$t4`), không cần stack.
 
 ---
 
 ## 3. Thủ tục `has_normal_move`
-* **Mục đích:** Kiểm tra nhanh xem quân tại ô `$a0` của người chơi `$a1` có còn ít nhất một nước đi thường hợp lệ hay không. Dùng cho việc hiện nước đi hợp lệ và phát hiện đối thủ bị khóa hết nước (trap win). **Không sửa `board`.**
-* **Giá trị trả về:** `$v0 = 1` nếu còn ít nhất 1 nước đi thường, `0` nếu không.
-* **Cách làm:**
-  * Kiểm tra nhanh `$a0` trong `1..32` và quân ở `board[$a0 - 1]` đúng thuộc về `$a1` (bỏ qua ngay ô trống hoặc quân địch).
-  * Duyệt 4 hướng chéo trong bảng `mv_dr` / `mv_dc` (`(-1,-1), (-1,+1), (+1,-1), (+1,+1)`), gọi `coord_to_square` rồi `validate_normal_move`. Gặp nước hợp lệ đầu tiên thì trả `1` ngay.
+* **Mục đích:** Kiểm tra quân tại `$a0` của người chơi `$a1` có ít nhất một nước đi thường hợp lệ hay không (ngay cả Vua bay luật Quốc tế cũng chỉ có nước đi khi và chỉ khi có ít nhất 1 ô chéo kề trống). **Không sửa `board`.**
 * **Stack:** Cấp `24` byte lưu `$s0–$s4` và `$ra`.
 
 ---
 
 ## 4. Thủ tục `print_normal_moves`
-* **Mục đích:** In tất cả các ô đích đi thường hợp lệ của quân tại `$a0` (thuộc người chơi `$a1`), cách nhau bởi dấu cách và theo thứ tự tăng dần số ô. **Không sửa `board`.**
-* **Giá trị trả về:** `$v0` = số lượng nước đi hợp lệ đã in.
-* **Cách làm:** Dùng chung bảng `mv_dr` / `mv_dc` và `validate_normal_move`, mỗi ô hợp lệ thì in số ô bằng syscall `1` và tăng biến đếm `$s5`.
-* **Stack:** Cấp `32` byte lưu `$s0–$s6` và `$ra`.
+* **Mục đích:** In toàn bộ các ô đích đi thường hợp lệ của quân tại `$a0` (thuộc `$a1`), trả về số lượng ô đã in trong `$v0`. **Không sửa `board`.**
+* **Hỗ trợ Vua bay:** Khi `ruleset == 1` và quân là Vua, duyệt từng tia trong 4 hướng chéo với khoảng cách `k = 1, 2, ...` cho tới khi gặp quân cản hoặc biên bàn cờ, in tất cả các ô trống đi tới được.
+* **Stack:** Cấp `36` byte lưu `$s0–$s7` và `$ra`.

@@ -6,24 +6,18 @@ Phụ trách: Thành viên A
 ---
 
 ## 1. Thủ tục `check_promotion`
-* **Mục đích:** Kiểm tra quân cờ vừa đi tới (hoặc vừa nhảy ăn quân đáp xuống) ô `destination` (`$a0`) có phải là quân Tốt chạm hàng phong cấp hay không; nếu đúng thì đổi ngay thành mã quân Vua tương ứng.
-* **Tham số đầu vào:** `$a0 = destination square` (`1..32`).
-* **Giá trị trả về:** Không có.
-* **Cách thực hiện:**
-  1. **Kiểm tra an toàn phạm vi:** Từ chối ngay nếu `$a0 < 1` hoặc `$a0 > 32` (`cp_done`) để tránh đọc/ghi ngoài mảng `board`.
-  2. **Đọc mã quân:** Tính địa chỉ `&board[$a0 - 1]` vào `$t1` và đọc byte mã quân bằng `lbu $t2, 0($t1)`.
-  3. **Phong cấp Tốt Đỏ (`piece == 1`):**
-     * Hàng cuối của Đỏ là hàng `7` (tương ứng các ô **`29..32`**).
-     * Kiểm tra bằng `slti $t3, $a0, 29`: nếu `$a0 >= 29`, ghi `2` (Vua Đỏ) vào `0($t1)` bằng `sb`.
-  4. **Phong cấp Tốt Đen (`piece == 3`):**
-     * Hàng cuối của Đen là hàng `0` (tương ứng các ô **`1..4`**).
-     * Kiểm tra bằng `slti $t3, $a0, 5`: nếu `$a0 <= 4`, ghi `4` (Vua Đen) vào `0($t1)` bằng `sb`.
-  5. **Các trường hợp khác:** Ô trống (`0`), đã là Vua (`2`, `4`), hoặc Tốt chưa tới hàng cuối → giữ nguyên `board`, nhảy tới `cp_done`.
+* **Mục đích:** Kiểm tra quân cờ tại ô `destination` (`$a0`) có phải là quân Tốt đang đứng trên hàng phong cấp (king-row) hay không; nếu đúng thì đổi thành mã quân Vua tương ứng.
+* **Hỗ trợ cả hai kích thước bàn cờ:** Đọc động `num_squares` (`32` hoặc `50`) và `squares_per_row` (`4` hoặc `5`):
+  * **Tốt Đỏ (`1` → `2`):** phong cấp khi `destination > num_squares - squares_per_row` (ô **`29..32`** trên bàn 8×8, ô **`46..50`** trên bàn 10×10).
+  * **Tốt Đen (`3` → `4`):** phong cấp khi `destination <= squares_per_row` (ô **`1..4`** trên bàn 8×8, ô **`1..5`** trên bàn 10×10).
+* **Thanh ghi:** Thủ tục lá (`$t0–$t6`), không cần cấp phát stack.
 
 ---
 
-## 2. Thiết kế thanh ghi & Tích hợp với phần của Thành viên B
-* **Thủ tục lá (Leaf procedure):** Không cần gọi `square_to_coord` (vì kiểm tra trực tiếp dải ô `29..32` và `1..4` nhanh và gọn hơn), chỉ dùng `$t0–$t3` nên **không cần cấp phát stack** và bảo toàn nguyên vẹn mọi thanh ghi `$s0–$s7`, `$ra`.
-* **Tương thích hoàn toàn với `main.asm` và `capture.asm`:**
-  * Trong `main.asm`, `check_promotion` được gọi ngay sau `apply_normal_move` và ngay sau `apply_capture` (trước khi gọi `check_capture` / `chain_capture`).
-  * Trong `capture.asm` (`chain_capture`), `check_promotion` được gọi ngay sau mỗi bước nhảy liên hoàn trước khi vòng lặp quay lại `check_capture`. Nhờ đó, quân Tốt vừa ăn quân đáp xuống hàng cuối sẽ lập tức thành Vua và có thể **ăn lùi ngay trong cùng chuỗi ăn** đúng theo đề bài.
+## 2. Thời điểm gọi theo từng loại luật
+* **Nước đi thường (cả 2 luật):** gọi `check_promotion` ngay sau `apply_normal_move`.
+* **Nước ăn quân — Luật Anh-Mỹ (`ruleset == 0`, theo `american_checkers.pdf` footnote 7):**
+  * Gọi `check_promotion` ngay sau khi đáp xuống ô đích. Nếu quân Tốt **vừa được phong Vua** trên hàng cuối, **lượt đi kết thúc ngay lập tức** (không nhảy tiếp).
+* **Nước ăn quân — Luật Quốc tế (`ruleset == 1`, theo ItsYourTurn):**
+  * **Không** phong cấp giữa chuỗi ăn: nếu Tốt chỉ đi ngang qua hàng phong cấp và vẫn còn nước ăn lùi, nó tiếp tục nhảy với tư cách quân Tốt.
+  * Chỉ gọi `check_promotion` **sau khi toàn bộ chuỗi ăn kết thúc** (nếu quân dừng lượt tại hàng phong cấp).
